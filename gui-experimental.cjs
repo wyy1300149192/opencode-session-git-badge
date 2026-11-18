@@ -23,6 +23,7 @@ const BADGE = "data-session-git"
 const CACHE_MS = 4000
 const FAIL_MS = 15000
 const SESSIONS_MS = 20000
+const REQUEST_MS = 10000
 
 const CSS = `
 [${BADGE}] {
@@ -110,6 +111,8 @@ module.exports = Plugin.define({
       const now = Date.now()
       const previous = repos.get(directory)
 
+      // A request that is still running owns the entry. Never reset its timer:
+      // overlapping requests can finish out of order and put an old count back.
       if (previous?.pending) return
       if (previous && now - previous.at < (previous.failed ? FAIL_MS : CACHE_MS)) return
 
@@ -121,16 +124,28 @@ module.exports = Plugin.define({
       }
       repos.set(directory, entry)
 
-      try {
-        const status = await ctx.client.vcs.status({ location: { directory } })
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_MS)
 
+      try {
+        const status = await ctx.client.vcs.status(
+          { location: { directory } },
+          { signal: controller.signal },
+        )
+
+        if (repos.get(directory) !== entry) return
         entry.count = Array.isArray(status?.data) ? status.data.length : 0
       } catch {
+        if (repos.get(directory) !== entry) return
         entry.failed = true
       } finally {
-        entry.pending = false
-        entry.at = Date.now()
-        schedule()
+        clearTimeout(timeout)
+
+        if (repos.get(directory) === entry) {
+          entry.pending = false
+          entry.at = Date.now()
+          schedule()
+        }
       }
     }
 
@@ -202,10 +217,9 @@ module.exports = Plugin.define({
 
         const entry = repos.get(directory)
 
-        if (!entry) {
-          void loadRepo(directory)
-          return
-        }
+        // loadRepo respects the cache and never overlaps a running request.
+        void loadRepo(directory)
+        if (!entry) return
         if (entry.failed || (entry.count ?? 0) === 0) {
           remove(badge)
           return
@@ -237,8 +251,10 @@ module.exports = Plugin.define({
     }, SESSIONS_MS)
 
     const refresh = setInterval(() => {
-      // Expire the cache so the next pass reads git again.
-      for (const entry of repos.values()) entry.at = 0
+      // Expire only settled entries; a pending request keeps its own timer.
+      for (const entry of repos.values()) {
+        if (!entry.pending) entry.at = 0
+      }
       pass()
     }, CACHE_MS)
 

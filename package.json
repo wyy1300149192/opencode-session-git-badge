@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-git-badge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shows a dot on OpenCode Desktop session tabs whose repository has uncommitted changes.",
   "type": "module",
   "license": "MIT",
