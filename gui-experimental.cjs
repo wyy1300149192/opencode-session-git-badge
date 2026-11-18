@@ -1,12 +1,13 @@
-// Uncommitted-change dot for the OpenCode Desktop session list.
+// Uncommitted-change dot for OpenCode Desktop.
 //
-// The desktop session list has no plugin slot, so this follows the markup of the
-// 2.3 vertical tab sidebar: each row is [data-slot="titlebar-tab-item"], its link
-// carries the session URL, and the title is [data-slot="tab-title"].
+// Two surfaces have no plugin slot, so this follows their markup:
+// - Session tabs: [data-slot="titlebar-tab-item"], the link carries the session
+//   URL, and the title is [data-slot="tab-title"].
+// - Home project list: [data-component="home-project-row"], labelled by
+//   [data-slot="home-row-label"].
 //
 // A row whose repository has uncommitted files gets a small warning-colored dot
-// at the start of the row, before the project icon. Clean repositories and
-// non-repositories get nothing.
+// at the start of the row. Clean repositories and non-repositories get nothing.
 //
 // This is intentionally dependency-free: the host provides @opencode/plugin/gui
 // at runtime, and the entry only touches the DOM plus the local server API.
@@ -20,19 +21,26 @@ const PROJECT = '[data-slot="tab-project"], [data-slot="tab-label"]'
 
 const BADGE = "data-session-git"
 
+const HOME_ROW = '[data-component="home-project-row"]'
+const HOME_LABEL = '[data-slot="home-row-label"]'
+const HOME_BADGE = "data-home-git"
+
 const CACHE_MS = 4000
 const FAIL_MS = 15000
 const SESSIONS_MS = 20000
 const REQUEST_MS = 10000
 
 const CSS = `
-[${BADGE}] {
+[${BADGE}],
+[${HOME_BADGE}] {
   flex: none;
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  margin-inline-end: 1px;
   background: var(--color-v2-state-fg-warning, #d97706);
+}
+[${BADGE}] {
+  margin-inline-end: 1px;
 }
 `
 
@@ -48,6 +56,7 @@ module.exports = Plugin.define({
     let sessions = new Map()
     let titles = new Map()
     let byId = new Map()
+    let homeProjects = new Map()
     let sessionsAt = 0
     let lastPass = 0
 
@@ -65,6 +74,21 @@ module.exports = Plugin.define({
           ctx.client.project.list(),
         ])
         const names = new Map(projects.map((project) => [project.id, named(project)]))
+        const home = new Map()
+
+        for (const project of projects) {
+          const name = named(project)
+          const directory = project.canonical
+
+          if (name && directory && !home.has(name)) home.set(name, directory)
+
+          for (const sandbox of project.sandboxes ?? []) {
+            const worktree = sandbox.split("/").pop()
+
+            if (worktree && !home.has(worktree)) home.set(worktree, sandbox)
+          }
+        }
+
         const found = new Map()
         const ambiguous = new Set()
         const byTitle = new Map()
@@ -99,6 +123,7 @@ module.exports = Plugin.define({
         sessions = found
         titles = unique
         byId = ids
+        homeProjects = home
         sessionsAt = Date.now()
       } catch {
         // Keep the previous map; the next pass retries.
@@ -181,6 +206,24 @@ module.exports = Plugin.define({
       return badge
     }
 
+    function homeDirectoryOf(row) {
+      const label = row.querySelector(HOME_LABEL)?.textContent?.trim()
+
+      if (!label) return
+      return homeProjects.get(label)
+    }
+
+    function homeBadgeOf(row) {
+      let badge = row.querySelector(`[${HOME_BADGE}]`)
+
+      if (badge) return badge
+      badge = document.createElement("span")
+      badge.setAttribute(HOME_BADGE, "")
+      row.prepend(badge)
+
+      return badge
+    }
+
     function render(badge, entry) {
       const count = entry.count ?? 0
 
@@ -226,6 +269,29 @@ module.exports = Plugin.define({
         }
 
         const element = badgeOf(row)
+
+        if (element) render(element, entry)
+      })
+
+      document.querySelectorAll(HOME_ROW).forEach((row) => {
+        const directory = homeDirectoryOf(row)
+        const badge = row.querySelector(`[${HOME_BADGE}]`)
+
+        if (!directory) {
+          remove(badge)
+          return
+        }
+
+        const entry = repos.get(directory)
+
+        void loadRepo(directory)
+        if (!entry) return
+        if (entry.failed || (entry.count ?? 0) === 0) {
+          remove(badge)
+          return
+        }
+
+        const element = homeBadgeOf(row)
 
         if (element) render(element, entry)
       })
