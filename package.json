@@ -1,0 +1,39 @@
+{
+  "name": "opencode-session-git-badge",
+  "version": "0.1.0",
+  "description": "Shows a dot on OpenCode Desktop session tabs whose repository has uncommitted changes.",
+  "type": "module",
+  "license": "MIT",
+  "author": "wy17300",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wyy1300149192/opencode-session-git-badge.git"
+  },
+  "homepage": "https://github.com/wyy1300149192/opencode-session-git-badge#readme",
+  "bugs": {
+    "url": "https://github.com/wyy1300149192/opencode-session-git-badge/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "git",
+    "desktop"
+  ],
+  "exports": {
+    ".": "./index.ts",
+    "./gui-experimental": "./gui-experimental.cjs"
+  },
+  "files": [
+    "index.ts",
+    "gui-experimental.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@opencode/plugin": "latest"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
+}
